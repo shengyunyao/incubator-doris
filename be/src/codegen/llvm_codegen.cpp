@@ -129,8 +129,8 @@ Status LlvmCodeGen::load_from_file(
     COUNTER_UPDATE((*codegen)->_module_file_size, file_buffer->getBufferSize());
     std::string error;
     llvm::Module* loaded_module = NULL;
-    // llvm::ParseBitcodeFile(file_buffer.get(),
-    //                        (*codegen)->context(), &error);
+    loaded_module = llvm::ParseBitcodeFile(file_buffer.get(),
+            (*codegen)->context(), &error);
 
     if (loaded_module == NULL) {
         std::stringstream ss;
@@ -145,7 +145,7 @@ Status LlvmCodeGen::load_from_file(
 
 Status LlvmCodeGen::load_from_memory(
         ObjectPool* pool, llvm::MemoryBuffer* module_ir,
-        const std::string& module_name, const std::string& id, 
+        const std::string& module_name, const std::string& id,
         boost::scoped_ptr<LlvmCodeGen>* codegen) {
     codegen->reset(new LlvmCodeGen(pool, id));
     SCOPED_TIMER((*codegen)->_profile.total_time_counter());
@@ -173,7 +173,7 @@ Status LlvmCodeGen::load_module_from_memory(
 }
 
 Status LlvmCodeGen::load_doris_ir(
-        ObjectPool* pool, 
+        ObjectPool* pool,
         const std::string& id,
         boost::scoped_ptr<LlvmCodeGen>* codegen_ret) {
     // Select the appropriate IR version.  We cannot use LLVM IR with sse instructions on
@@ -229,9 +229,27 @@ Status LlvmCodeGen::load_doris_ir(
             // will be mangled.
             // TODO: reconsider this.  Substring match is probably not strict enough but
             // undoing the mangling is no fun either.
-            if (fn_name.find(FN_MAPPINGS[j].fn_name) != std::string::npos) {
+            std::string name_to_find = "";
+            if (FN_MAPPINGS[j].fn_name == "16from_decimal_val") {
+                name_to_find = "DecimalV2Value16from_decimal_val";
+            } else if (FN_MAPPINGS[j].fn_name == "14to_decimal_val") {
+                name_to_find = "DecimalV2Value14to_decimal_val";
+            } else {
+                name_to_find = FN_MAPPINGS[j].fn_name;
+            }
+            if (fn_name.find(name_to_find) != std::string::npos) {
                 if (codegen->_loaded_functions[FN_MAPPINGS[j].fn] != NULL) {
-                    return Status::InternalError("Duplicate definition found for function: " + fn_name);
+                    std::string aaa = "";
+                    for (int jj = IRFunction::FN_START; jj < IRFunction::FN_END; ++jj) {
+                        aaa.append(FN_MAPPINGS[jj].fn_name);
+                        aaa.append("\n");
+                    }
+                    std::string bbb = "";
+                    for (int jj = 0; jj < functions.size(); ++jj) {
+                        bbb.append(functions[jj]->getName());
+                        bbb.append("\n");
+                    }
+                    return Status::InternalError("Duplicate definition found for function: " + fn_name + " : " + FN_MAPPINGS[j].fn_name + "\n"+ aaa + "ysy: \n" + bbb);
                 }
 
                 codegen->_loaded_functions[FN_MAPPINGS[j].fn] = functions[i];
@@ -687,7 +705,7 @@ Status LlvmCodeGen::finalize_module() {
 
     // Don't waste time optimizing module if there are no functions to JIT. This can happen
     // if the codegen object is created but no functions are successfully codegen'd.
-    if (_optimizations_enabled // TODO(zc): && !FLAGS_disable_optimization_passes 
+    if (_optimizations_enabled // TODO(zc): && !FLAGS_disable_optimization_passes
             && !_fns_to_jit_compile.empty()) {
         optimize_module();
     }
@@ -1064,7 +1082,7 @@ void LlvmCodeGen::codegen_assign(LlvmBuilder* builder,
                                 llvm::Value* dst, llvm::Value* src, PrimitiveType type) {
     switch (type) {
     case TYPE_CHAR:
-    case TYPE_VARCHAR: 
+    case TYPE_VARCHAR:
     case TYPE_HLL:  {
         codegen_memcpy(builder, dst, src, sizeof(StringValue));
         break;
