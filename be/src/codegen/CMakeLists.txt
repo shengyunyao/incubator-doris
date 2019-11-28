@@ -100,3 +100,12 @@ add_custom_command(
   DEPENDS ${IR_NO_SSE_OUTPUT_FILE}
 )
 
+
+message(STATUS "ysy => COMMAND ${LLVM_CLANG_EXECUTABLE} ${CLANG_IR_CXX_FLAGS} ${CLANG_INCLUDE_FLAGS} ${CMAKE_SOURCE_DIR}/testdata/llvm/test_loop.cc -o ${CMAKE_SOURCE_DIR}/llvm-ir/test_loop.bc")
+
+# Run the clang compiler to generate BC for llvm-codegen-test
+add_custom_target(test_loop.bc
+    # COMMAND ${LLVM_CLANG_EXECUTABLE} ${CLANG_IR_CXX_FLAGS} ${CLANG_INCLUDE_FLAGS} ${CMAKE_SOURCE_DIR}/testdata/llvm/test_loop.cc -o ${CMAKE_SOURCE_DIR}/build/test/codegen/llvm-ir/test_loop.bc
+    COMMAND ${LLVM_CLANG_EXECUTABLE} ${CLANG_IR_CXX_FLAGS} ${CLANG_INCLUDE_FLAGS} ${CMAKE_SOURCE_DIR}/testdata/llvm/test_loop.cc -o ${CMAKE_SOURCE_DIR}/llvm-ir/test_loop.bc
+  SOURCES ${CMAKE_SOURCE_DIR}/testdata/llvm/test_loop.cc
+)

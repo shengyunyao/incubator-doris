@@ -27,7 +27,7 @@
 #define RADIXSORT_H_
 
 #include <string.h>
-#include <malloc.h>
+#include <stdlib.h>
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
