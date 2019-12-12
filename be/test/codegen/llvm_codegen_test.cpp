@@ -16,16 +16,17 @@
 // under the License.
 
 #include <string>
+#include <stdlib.h>
 #include <gtest/gtest.h>
 #include <boost/thread/thread.hpp>
 
-#include "codegen/llvm-codegen.h"
-#include "runtime/raw-value.h"
-#include "util/cpu-info.h"
-#include "util/disk-info.h"
-#include "util/hash-util.h"
-#include "util/mem-info.h"
-#include "util/path-builder.h"
+#include "codegen/llvm_codegen.h"
+#include "runtime/raw_value.h"
+#include "util/cpu_info.h"
+#include "util/disk_info.h"
+#include "util/hash_util.hpp"
+#include "util/mem_info.h"
+#include "util/path_builder.h"
 
 using namespace std;
 using namespace boost;
@@ -44,14 +45,14 @@ private:
             LlvmCodeGen object2(&pool, "Test");
             LlvmCodeGen object3(&pool, "Test");
 
-            status = object1.Init();
-            ASSERT_TRUE(status.ok());
+            status = object1.init();
+            EXPECT_TRUE(status.ok());
 
-            status = object2.Init();
-            ASSERT_TRUE(status.ok());
+            status = object2.init();
+            EXPECT_TRUE(status.ok());
 
-            status = object3.Init();
-            ASSERT_TRUE(status.ok());
+            status = object3.init();
+            EXPECT_TRUE(status.ok());
         }
     }
 
@@ -62,10 +63,10 @@ private:
     }
 
     static LlvmCodeGen* CreateCodegen(ObjectPool* pool) {
-        LlvmCodeGen* codegen = pool->Add(new LlvmCodeGen(pool, "Test"));
+        LlvmCodeGen* codegen = pool->add(new LlvmCodeGen(pool, "Test"));
 
         if (codegen != NULL) {
-            Status status = codegen->Init();
+            Status status = codegen->init();
 
             if (!status.ok()) {
                 return NULL;
@@ -103,7 +104,7 @@ TEST_F(LlvmCodeGenTest, BadIRFile) {
     ObjectPool pool;
     string module_file = "NonExistentFile.ir";
     scoped_ptr<LlvmCodeGen> codegen;
-    Status status = LlvmCodeGenTest::load_from_file(&pool, module_file.c_str(), &codegen);
+    Status status = LlvmCodeGenTest::load_from_file(&pool, module_file, &codegen);
     EXPECT_TRUE(!status.ok());
 }
 
@@ -155,28 +156,32 @@ TEST_F(LlvmCodeGenTest, ReplaceFnCall) {
     ObjectPool pool;
     const char* loop_call_name = "DefaultImplementation";
     const char* loop_name = "TestLoop";
+    const char* dummy_fn_name = "printf_dummy_fn";
     typedef void (*TestLoopFn)(int);
 
     string module_file;
-    PathBuilder::GetFullPath("llvm-ir/test-loop.ir", &module_file);
+    PathBuilder::get_full_path("llvm-ir/test_loop.bc", &module_file);
 
     // Part 1: Load the module and make sure everything is loaded correctly.
     scoped_ptr<LlvmCodeGen> codegen;
-    Status status = LlvmCodeGenTest::load_from_file(&pool, module_file.c_str(), &codegen);
+    Status status = LlvmCodeGenTest::load_from_file(&pool, module_file, &codegen);
     EXPECT_TRUE(codegen.get() != NULL);
     EXPECT_TRUE(status.ok());
 
     vector<Function*> functions;
     codegen->get_functions(&functions);
-    EXPECT_EQ(functions.size(), 2);
+    EXPECT_EQ(functions.size(), 3);
 
     Function* loop_call = functions[0];
     Function* loop = functions[1];
+    Function* dummy_fn = functions[2];
 
     EXPECT_TRUE(loop_call->getName().find(loop_call_name) != string::npos);
     EXPECT_TRUE(loop_call->arg_empty());
     EXPECT_TRUE(loop->getName().find(loop_name) != string::npos);
     EXPECT_EQ(loop->arg_size(), 1);
+    EXPECT_TRUE(dummy_fn->getName().find(dummy_fn_name) != string::npos);
+    EXPECT_TRUE(dummy_fn->arg_empty());
 
     int scratch_size;
     void* original_loop = codegen->jit_function(loop, &scratch_size);
@@ -255,10 +260,10 @@ TEST_F(LlvmCodeGenTest, ReplaceFnCall) {
 //   ret i32 %len
 // }
 Function* CodegenStringTest(LlvmCodeGen* codegen) {
-    PointerType* string_val_ptr_type = codegen->get_ptr_type(TYPE_VARCHAR);
+    PointerType* string_val_ptr_type = codegen->get_ptr_type(TYPE_CHAR);
     EXPECT_TRUE(string_val_ptr_type != NULL);
 
-    LlvmCodeGen::FnPrototype prototype(codegen, "StringTest", codegen->get_type(TYPE_INT));
+    LlvmCodeGen::FnPrototype prototype(codegen, "StringTest", codegen->get_type(TYPE_BIGINT));
     prototype.add_argument(LlvmCodeGen::NamedVariable("str", string_val_ptr_type));
     LlvmCodeGen::LlvmBuilder builder(codegen->context());
 
@@ -275,8 +280,9 @@ Function* CodegenStringTest(LlvmCodeGen* codegen) {
     // Update and return old len
     Value* len_ptr = builder.CreateStructGEP(str, 1, "len_ptr");
     Value* len = builder.CreateLoad(len_ptr, "len");
-    builder.CreateStore(codegen->get_int_constant(TYPE_INT, 1), len_ptr);
+    builder.CreateStore(codegen->get_int_constant(TYPE_BIGINT, 1), len_ptr);
     builder.CreateRet(len);
+    std::cout << codegen->get_ir(false);
 
     return interop_fn;
 }
@@ -288,7 +294,9 @@ TEST_F(LlvmCodeGenTest, StringValue) {
     ObjectPool pool;
 
     scoped_ptr<LlvmCodeGen> codegen;
-    Status status = LlvmCodeGen::load_doris_ir(&pool, &codegen);
+    std::string id = "1";
+    Status status = LlvmCodeGen::load_doris_ir(&pool, id, &codegen);
+    std::cout << "ysy => " << status.to_string() << std::endl;
     EXPECT_TRUE(status.ok());
     EXPECT_TRUE(codegen.get() != NULL);
 
@@ -330,9 +338,10 @@ TEST_F(LlvmCodeGenTest, MemcpyTest) {
     ObjectPool pool;
 
     scoped_ptr<LlvmCodeGen> codegen;
-    Status status = LlvmCodeGen::load_doris_ir(&pool, &codegen);
-    ASSERT_TRUE(status.ok());
-    ASSERT_TRUE(codegen.get() != NULL);
+    std::string id = "2";
+    Status status = LlvmCodeGen::load_doris_ir(&pool, id, &codegen);
+    EXPECT_TRUE(status.ok());
+    EXPECT_TRUE(codegen.get() != NULL);
 
     LlvmCodeGen::FnPrototype prototype(codegen.get(), "MemcpyTest", codegen->void_type());
     prototype.add_argument(LlvmCodeGen::NamedVariable("dest", codegen->ptr_type()));
@@ -350,10 +359,10 @@ TEST_F(LlvmCodeGenTest, MemcpyTest) {
     builder.CreateRetVoid();
 
     fn = codegen->finalize_function(fn);
-    ASSERT_TRUE(fn != NULL);
+    EXPECT_TRUE(fn != NULL);
 
     void* jitted_fn = codegen->jit_function(fn);
-    ASSERT_TRUE(jitted_fn != NULL);
+    EXPECT_TRUE(jitted_fn != NULL);
 
     typedef void (*TestMemcpyFn)(char*, char*, int64_t);
     TestMemcpyFn test_fn = reinterpret_cast<TestMemcpyFn>(jitted_fn);
@@ -372,9 +381,10 @@ TEST_F(LlvmCodeGenTest, HashTest) {
     const char* data2 = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
     scoped_ptr<LlvmCodeGen> codegen;
-    Status status = LlvmCodeGen::load_doris_ir(&pool, &codegen);
-    ASSERT_TRUE(status.ok());
-    ASSERT_TRUE(codegen.get() != NULL);
+    std::string id = "3";
+    Status status = LlvmCodeGen::load_doris_ir(&pool, id, &codegen);
+    EXPECT_TRUE(status.ok());
+    EXPECT_TRUE(codegen.get() != NULL);
 
     bool restore_sse_support = false;
 
@@ -388,9 +398,9 @@ TEST_F(LlvmCodeGenTest, HashTest) {
     // Loop to test both the sse4 on/off paths
     for (int i = 0; i < 2; ++i) {
         uint32_t expected_hash = 0;
-        expected_hash = HashUtil::Hash(data1, strlen(data1), expected_hash);
-        expected_hash = HashUtil::Hash(data2, strlen(data2), expected_hash);
-        expected_hash = HashUtil::Hash(data1, strlen(data1), expected_hash);
+        expected_hash = HashUtil::hash(data1, strlen(data1), expected_hash);
+        expected_hash = HashUtil::hash(data2, strlen(data2), expected_hash);
+        expected_hash = HashUtil::hash(data1, strlen(data1), expected_hash);
 
         // Create a codegen'd function that hashes all the types and returns the results.
         // The tuple/values to hash are baked into the codegen for simplicity.
@@ -404,9 +414,9 @@ TEST_F(LlvmCodeGenTest, HashTest) {
         Function* data2_hash_fn = codegen->get_hash_function(strlen(data2));
         Function* generic_hash_fn = codegen->get_hash_function();
 
-        ASSERT_TRUE(data1_hash_fn != NULL);
-        ASSERT_TRUE(data2_hash_fn != NULL);
-        ASSERT_TRUE(generic_hash_fn != NULL);
+        EXPECT_TRUE(data1_hash_fn != NULL);
+        EXPECT_TRUE(data2_hash_fn != NULL);
+        EXPECT_TRUE(generic_hash_fn != NULL);
 
         Value* seed = codegen->get_int_constant(TYPE_INT, 0);
         seed = builder.CreateCall3(data1_hash_fn, llvm_data1, llvm_len1, seed);
@@ -415,10 +425,10 @@ TEST_F(LlvmCodeGenTest, HashTest) {
         builder.CreateRet(seed);
 
         fn_fixed = codegen->finalize_function(fn_fixed);
-        ASSERT_TRUE(fn_fixed != NULL);
+        EXPECT_TRUE(fn_fixed != NULL);
 
         void* jitted_fn = codegen->jit_function(fn_fixed);
-        ASSERT_TRUE(jitted_fn != NULL);
+        EXPECT_TRUE(jitted_fn != NULL);
 
         typedef uint32_t (*TestHashFn)();
         TestHashFn test_fn = reinterpret_cast<TestHashFn>(jitted_fn);
@@ -429,7 +439,7 @@ TEST_F(LlvmCodeGenTest, HashTest) {
         EXPECT_EQ(result, expected_hash);
 
         if (i == 0 && CpuInfo::is_supported(CpuInfo::SSE4_2)) {
-            CpuInfo::EnableFeature(CpuInfo::SSE4_2, false);
+            CpuInfo::enable_feature(CpuInfo::SSE4_2, false);
             restore_sse_support = true;
             LlvmCodeGenTest::clear_hash_fns(codegen.get());
         } else {
@@ -439,15 +449,17 @@ TEST_F(LlvmCodeGenTest, HashTest) {
     }
 
     // Restore hardware feature for next test
-    CpuInfo::EnableFeature(CpuInfo::SSE4_2, restore_sse_support);
+    CpuInfo::enable_feature(CpuInfo::SSE4_2, restore_sse_support);
 }
 
 }
 
 int main(int argc, char** argv) {
-    doris::CpuInfo::Init();
-    doris::DiskInfo::Init();
-    doris::MemInfo::Init();
+    setenv("DORIS_HOME", "/home/users/yaoshengyun/workspace/baidu/bdg/doris/core/be", 1); // does overwrite
+
+    doris::CpuInfo::init();
+    doris::DiskInfo::init();
+    doris::MemInfo::init();
     ::testing::InitGoogleTest(&argc, argv);
     doris::LlvmCodeGen::initialize_llvm();
     return RUN_ALL_TESTS();

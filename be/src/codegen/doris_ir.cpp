@@ -35,6 +35,7 @@ struct __float128;
 #include "runtime/string_value_ir.cpp"
 #include "udf/udf_ir.cpp"
 #include "util/hash_util_ir.cpp"
+#include "exprs/aggregate_functions.cpp"
 #else
 #error "This file should only be used for cross compiling to IR."
 #endif
